@@ -10,44 +10,28 @@ import (
 
 const intcode = `3,8,1001,8,10,8,105,1,0,0,21,34,47,72,81,94,175,256,337,418,99999,3,9,102,3,9,9,1001,9,3,9,4,9,99,3,9,101,4,9,9,1002,9,5,9,4,9,99,3,9,1001,9,5,9,1002,9,5,9,1001,9,2,9,1002,9,5,9,101,5,9,9,4,9,99,3,9,102,2,9,9,4,9,99,3,9,1001,9,4,9,102,4,9,9,4,9,99,3,9,102,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1002,9,2,9,4,9,3,9,102,2,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,101,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,102,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1001,9,1,9,4,9,99,3,9,102,2,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,101,1,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,102,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1001,9,1,9,4,9,3,9,1001,9,2,9,4,9,3,9,1001,9,2,9,4,9,3,9,1002,9,2,9,4,9,99,3,9,101,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1001,9,1,9,4,9,3,9,1002,9,2,9,4,9,3,9,101,1,9,9,4,9,3,9,102,2,9,9,4,9,3,9,101,1,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,102,2,9,9,4,9,99,3,9,1001,9,1,9,4,9,3,9,102,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,102,2,9,9,4,9,3,9,101,1,9,9,4,9,3,9,102,2,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,101,2,9,9,4,9,3,9,1002,9,2,9,4,9,3,9,101,2,9,9,4,9,99,3,9,102,2,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,1002,9,2,9,4,9,3,9,101,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1002,9,2,9,4,9,3,9,1001,9,1,9,4,9,3,9,101,2,9,9,4,9,3,9,1001,9,1,9,4,9,3,9,1002,9,2,9,4,9,99`
 
-var debug bool
+var globalHighest int
 
 func main() {
-	debug = true
-
-	var highest int
-	perms := permutations([]int{0, 1, 2, 3, 4})
-
-	for _, perm := range perms { // try all permutations
-		amps := make([]*IntCodeComputer, 5)
-
+	for _, perm := range makePermutations([]int{5, 6, 7, 8, 9}) {
 		// Create five amplifiers
+		amps := make([]*IntCodeComputer, 5)
 		for i := 0; i < 5; i++ {
 			icc := NewIntCodeComputer(intcode)
 			amps[i] = icc
 		}
 
-		var wg sync.WaitGroup
-		lastOutput := make(chan int)
+		var wg sync.WaitGroup // keep track of running amps
 
 		// run each amp and connect it's output to the next input
 		for i := range amps {
 			amp := amps[i]
-
-			var outputCh chan int
 			nextIdx := (i + 1) % len(amps)
-			if nextIdx == 0 {
-				log.Printf("connecting amp '%d's output to last output", i)
-				outputCh = lastOutput
-			} else {
-				log.Printf("connecting amp '%d's output to amp '%d's input", i, nextIdx)
-				outputCh = amps[nextIdx].input // write to the next channels input
-			}
 
 			// run the amp
+			wg.Add(1)
 			go func() {
-				wg.Add(1)
-				amp.Run(outputCh)
+				amp.Run(amps[nextIdx].input) // write to the next (wrapping) channels input
 				wg.Done()
 			}()
 
@@ -59,21 +43,10 @@ func main() {
 		// send initial input to the first amp
 		amps[0].input <- 0
 
-		// wait for last output
-		out := <-lastOutput
-		if out > highest {
-			highest = out
-		}
-
-		// if debug {
-		// 	log.Printf("-> in to '%d', phase '%d', input '%d'", i, phase, input)
-		// }
-
-		// Wait for all to finish
-		// wg.Wait()
+		wg.Wait() // wait for all amps to finish
 	}
 
-	log.Println("highest", highest)
+	log.Println("highest", globalHighest)
 }
 
 // IntCodeComputer describes a computer running intcode programs
@@ -128,7 +101,11 @@ func (icc *IntCodeComputer) Instructions() map[int]InstructionFunc {
 		},
 		// Write output
 		4: func(paramModes []int) {
-			icc.output <- icc.Read(paramModes[0])
+			out := icc.Read(paramModes[0])
+			if out > globalHighest {
+				globalHighest = out
+			}
+			icc.output <- out
 		},
 		// Jump if true
 		5: func(paramModes []int) {
@@ -215,8 +192,7 @@ func NewIntCodeComputer(intcode string) *IntCodeComputer {
 
 	return &IntCodeComputer{
 		memory: ii,
-		input:  make(chan int, 15),
-		// output: make(chan int, 5),
+		input:  make(chan int, 1),
 	}
 }
 
@@ -254,7 +230,7 @@ func parseParamMode(b byte) int {
 	return i
 }
 
-func permutations(arr []int) [][]int {
+func makePermutations(arr []int) [][]int {
 	var helper func([]int, int)
 	res := [][]int{}
 
