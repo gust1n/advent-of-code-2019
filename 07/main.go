@@ -10,9 +10,9 @@ import (
 
 const intcode = `3,8,1001,8,10,8,105,1,0,0,21,34,47,72,81,94,175,256,337,418,99999,3,9,102,3,9,9,1001,9,3,9,4,9,99,3,9,101,4,9,9,1002,9,5,9,4,9,99,3,9,1001,9,5,9,1002,9,5,9,1001,9,2,9,1002,9,5,9,101,5,9,9,4,9,99,3,9,102,2,9,9,4,9,99,3,9,1001,9,4,9,102,4,9,9,4,9,99,3,9,102,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1002,9,2,9,4,9,3,9,102,2,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,101,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,102,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1001,9,1,9,4,9,99,3,9,102,2,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,101,1,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,102,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1001,9,1,9,4,9,3,9,1001,9,2,9,4,9,3,9,1001,9,2,9,4,9,3,9,1002,9,2,9,4,9,99,3,9,101,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1001,9,1,9,4,9,3,9,1002,9,2,9,4,9,3,9,101,1,9,9,4,9,3,9,102,2,9,9,4,9,3,9,101,1,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,102,2,9,9,4,9,99,3,9,1001,9,1,9,4,9,3,9,102,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,102,2,9,9,4,9,3,9,101,1,9,9,4,9,3,9,102,2,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,101,2,9,9,4,9,3,9,1002,9,2,9,4,9,3,9,101,2,9,9,4,9,99,3,9,102,2,9,9,4,9,3,9,1001,9,2,9,4,9,3,9,1002,9,2,9,4,9,3,9,101,2,9,9,4,9,3,9,101,2,9,9,4,9,3,9,1002,9,2,9,4,9,3,9,1001,9,1,9,4,9,3,9,101,2,9,9,4,9,3,9,1001,9,1,9,4,9,3,9,1002,9,2,9,4,9,99`
 
-var globalHighest int
-
 func main() {
+	var highestOut int
+
 	for _, perm := range makePermutations([]int{5, 6, 7, 8, 9}) {
 		// Create five amplifiers
 		amps := make([]*IntCodeComputer, 5)
@@ -44,9 +44,14 @@ func main() {
 		amps[0].input <- 0
 
 		wg.Wait() // wait for all amps to finish
+
+		lastOut := amps[4].highestOut
+		if lastOut > highestOut {
+			highestOut = lastOut
+		}
 	}
 
-	log.Println("highest", globalHighest)
+	log.Println("highest", highestOut)
 }
 
 // IntCodeComputer describes a computer running intcode programs
@@ -56,6 +61,7 @@ type IntCodeComputer struct {
 	output         chan int
 	instructionPtr int
 	running        bool
+	highestOut     int
 }
 
 // Read returns current memory position, based on parameter mode
@@ -102,8 +108,8 @@ func (icc *IntCodeComputer) Instructions() map[int]InstructionFunc {
 		// Write output
 		4: func(paramModes []int) {
 			out := icc.Read(paramModes[0])
-			if out > globalHighest {
-				globalHighest = out
+			if out > icc.highestOut {
+				icc.highestOut = out
 			}
 			icc.output <- out
 		},
@@ -157,7 +163,7 @@ func (icc *IntCodeComputer) Instructions() map[int]InstructionFunc {
 }
 
 // Run starts the IntCodeComputer, returns a channel that closes when program halts
-func (icc IntCodeComputer) Run(outputCh chan int) {
+func (icc *IntCodeComputer) Run(outputCh chan int) {
 	icc.running = true
 	icc.output = outputCh
 
