@@ -1,4 +1,4 @@
-package intcode
+package main
 
 import (
 	"fmt"
@@ -12,6 +12,7 @@ type Computer struct {
 	memory         []int
 	relativeBase   int
 	input          chan int
+	staticInput    int
 	output         chan int
 	instructionPtr int
 	running        bool
@@ -22,7 +23,8 @@ type InstructionFunc func(paramModes []int)
 
 // SendInput sends input to the computer
 func (icc *Computer) SendInput(i int) {
-	icc.input <- i
+	// icc.input <- i
+	icc.staticInput = i
 }
 
 // Read returns current memory position, based on parameter mode
@@ -70,7 +72,8 @@ func (icc *Computer) Instructions() map[int]InstructionFunc {
 		},
 		// Read input and write to memory
 		3: func(paramModes []int) {
-			icc.Write(paramModes[0], <-icc.input)
+			icc.Write(paramModes[0], icc.staticInput)
+			// icc.Write(paramModes[0], <-icc.input)
 		},
 		// Write output
 		4: func(paramModes []int) {
@@ -170,7 +173,7 @@ func NewComputer(intcode string) *Computer {
 
 	return &Computer{
 		memory: ii,
-		input:  make(chan int, 2),
+		input:  make(chan int),
 	}
 }
 
